@@ -1,12 +1,20 @@
-# ds4-vllm-0.25-test
-Running Deepseek-V4-Flash with OpenAI/vllm:0.25
-
-
 # DeepSeek-V4-Flash on stock vLLM v0.25.0 (SM120 / RTX PRO 6000 Blackwell)
 
 **Fix for:** `TypeError: trtllm_batch_decode_sparse_mla_dsv4() got an unexpected keyword argument 'swa_topk_lens'`
 
 Running `deepseek-ai/DeepSeek-V4-Flash` (FP8, ~160 GB) on the stock `vllm/vllm-openai:v0.25.0` image, TP=2 across 2× RTX PRO 6000 Blackwell (SM120). Works with a one-line dependency bump — no fork, no source patches.
+
+## Background
+
+**vLLM v0.25.0** (released 2026-07-11) is the first stock release with a realistic shot at DSv4 on SM120 consumer/workstation Blackwell. The release notes bring the pieces that were missing in v0.24.0 — where stock could not run DSv4-FP8 on this hardware at all, forcing everyone onto patched forks:
+
+- DeepGEMM updated to enable **SM120 support**
+- DSv4-specific kernel work: a `token_to_req_indices` cache (5–6× kernel speedup) and an improved DSv4 MXFP8 kernel
+- The DeepSeek V4 tool/reasoning parser ported to the new Streaming Parser Engine
+
+**Model:** the official [`deepseek-ai/DeepSeek-V4-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash) checkpoint — native FP8 weights (`scale_fmt=ue8m0`), ~160 GB across 46 safetensors shards. At TP=2 that's ~75.6 GiB per GPU, leaving roughly 10 GiB per card for fp8 KV cache at `gpu_memory_utilization=0.95` on 96 GB cards. vLLM resolves the expert dtype to fp4 and runs the MoE through its `DEEPGEMM_MXFP4` backend; attention takes the default `DEEPSEEK_SPARSE_SWA` sparse-MLA path.
+
+That default attention path is exactly where the release-day bug lives.
 
 ## The bug
 
@@ -158,3 +166,19 @@ services:
           --speculative-config '{"method":"mtp","num_speculative_tokens":2}' \
           --async-scheduling
 ```
+
+## Benchmark results
+
+Aggregate decode throughput (tok/s) by prompt depth and concurrency, measured with `vllm bench serve` (random dataset) on the compose above — 2× RTX PRO 6000 Blackwell, TP=2, fp8 KV cache, MTP-2. Missing cells: prompt depth × concurrency exceeds the KV cache pool at 1 M `max_model_len`.
+
+| Prompt depth \ Concurrency | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 167.4 | 232.1 | 229.7 | 430.5 | 616.3 | 903.7 | 1383.1 |
+| 8k | 181.1 | 236.4 | 219.4 | 391.9 | 502.8 | 738.9 | 1071.1 |
+| 16k | 171.9 | 220.2 | 215.6 | 365.9 | 532.7 | 718.8 | 1119.9 |
+| 32k | 166.0 | 226.8 | 230.6 | 384.0 | 471.2 | 721.9 | — |
+| 64k | 153.6 | 210.4 | 211.9 | 367.5 | 506.2 | — | — |
+| 128k | 154.8 | 206.9 | 195.9 | 356.2 | — | — | — |
+| 256k | 162.1 | 217.0 | 191.8 | — | — | — | — |
+
+Notable: single-stream decode holds remarkably flat with depth (~167 tok/s shallow → ~155–162 tok/s at 128–256k), and throughput scales to ~1.4k tok/s aggregate at 64 concurrent shallow streams.
