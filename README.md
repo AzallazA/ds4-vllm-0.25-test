@@ -149,7 +149,7 @@ services:
           --api-key CHANGE_ME \
           --trust-remote-code \
           --host 0.0.0.0 \
-          --port 15004 \
+          --port 15000 \
           --tensor-parallel-size 2 \
           --disable-custom-all-reduce \
           --kv-cache-dtype fp8 \
