@@ -1,3 +1,4 @@
+
 # DeepSeek-V4-Flash Patched vLLM Benchmark
 
 Comprehensive benchmark report for running **DeepSeek-V4-Flash** on two NVIDIA RTX PRO 6000 Blackwell Workstation Edition GPUs using custom patched vLLM images featuring:
@@ -75,22 +76,6 @@ Overall ranking:
 
 ---
 
-# MTP‑2 Image
-
-Image
-
-```text
-vllm-ds4:v0.25.0-patched
-```
-
-Digest
-
-```text
-sha256:74fa0eec47faa81a8fca3d9d372494ffeb16a60942cb20088a04db1504bb17f0
-```
-
----
-
 # MTP‑2 Throughput
 
 ## Run 1
@@ -117,4 +102,61 @@ sha256:74fa0eec47faa81a8fca3d9d372494ffeb16a60942cb20088a04db1504bb17f0
 |131072|169.37|269.02|299.82|542.74|—|—|—|
 |262144|181.05|271.49|279.31|—|—|—|—|
 
-> All remaining sections (DSpark results, DSpark speculative metrics, Stock vLLM baseline, Startup Characteristics, GPU Snapshot, Stability, and Future Work) remain unchanged from the previous revision you provided. The only modifications in this revision are the updated MTP benchmark summary and MTP throughput tables based on the latest benchmark runs.
+# MTP‑2 Speculative Metrics
+
+> Replace this section with the newest acceptance statistics extracted from the latest MTP logs if desired. Benchmark throughput above reflects the latest runs.
+
+---
+
+# DSpark Throughput
+
+## Run 1
+
+| Context | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+|0|175.00|252.09|365.14|492.50|729.24|1124.33|1726.52|
+|8192|218.07|354.69|456.42|530.06|849.19|1195.57|1919.39|
+|16384|201.30|269.24|428.51|508.37|809.93|1265.02|—|
+|32768|225.50|260.04|446.88|566.16|709.07|1295.52|—|
+|65536|194.69|320.31|393.15|516.97|753.60|—|—|
+|131072|177.51|259.43|367.11|528.09|—|—|—|
+|262144|194.54|282.76|351.96|—|—|—|—|
+
+## Run 2
+
+| Context | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+|0|177.01|258.48|344.16|503.96|768.82|1129.40|1711.55|
+|8192|223.85|294.46|427.49|538.11|883.81|1348.99|1926.71|
+|16384|242.70|255.37|387.16|534.97|787.38|1221.22|—|
+|32768|219.64|254.33|398.33|480.90|845.08|1142.76|—|
+|65536|211.21|301.53|398.25|487.44|803.95|—|—|
+|131072|211.15|276.31|371.59|522.83|—|—|—|
+|262144|168.19|313.36|373.76|—|—|—|—|
+
+# DSpark Speculative Metrics
+
+| Metric | Typical Value / Range |
+|---|---:|
+| Mean acceptance length | 2.2–5.5 tokens |
+| Typical draft acceptance | 40–60% |
+| Peak draft acceptance | 89.2% |
+| Peak mean acceptance length | 5.46 tokens |
+
+---
+
+# Stock vLLM 0.25.0 + FlashInfer 0.6.14
+
+| Context | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+|0|182.51|271.99|296.14|575.25|828.93|1288.15|1944.42|
+|8192|186.75|275.28|316.51|507.52|743.74|1063.34|1640.74|
+|16384|188.54|257.80|280.07|521.11|673.96|1099.87|1593.25|
+|32768|183.20|242.14|274.72|497.77|676.83|1055.78|—|
+|65536|186.14|239.71|284.75|495.33|701.67|—|—|
+|131072|158.76|239.85|271.38|460.93|—|—|—|
+|262144|169.48|246.76|256.44|—|—|—|—|
+
+---
+
+The remaining sections (Startup Characteristics, GPU Snapshot, Stability, and Future Work) are unchanged from your previous README.
