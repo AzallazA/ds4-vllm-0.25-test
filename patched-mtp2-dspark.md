@@ -1,318 +1,510 @@
-# DeepSeek-V4-Flash vLLM Patch Benchmark
+# DeepSeek-V4-Flash Patched vLLM Benchmarks
 
-Complete benchmark report for DeepSeek-V4-Flash using custom patched
-vLLM builds with:
+This document contains the complete benchmark results and runtime
+configuration used while evaluating custom patched vLLM builds for
+DeepSeek-V4-Flash on dual NVIDIA RTX PRO 6000 Blackwell GPUs.
 
--   MTP-2 speculative decoding
--   DSpark speculative decoding
--   FlashInfer CUTLASS MoE optimizations
--   DeepSeek V4 specific patches
+The work focused on evaluating two speculative decoding implementations:
 
-------------------------------------------------------------------------
+- MTP-2
+- DSpark
 
-# Hardware
+Both images include DeepSeek-V4 specific optimizations together with
+FlashInfer CUTLASS MXFP4 MoE support.
 
-Host:
+---
 
--   Ubuntu 26.04 LTS
--   AMD Threadripper Pro 7965WX
--   24 cores
--   \~256 GB RAM
+# Test Hardware
 
-GPUs:
+## Host
 
--   2x NVIDIA RTX PRO 6000 Blackwell Workstation Edition
--   Tensor Parallelism: 2
--   PCIe interconnect (no NVLink)
+| Component | Value |
+|----------|-------|
+| Operating System | Ubuntu 26.04 LTS |
+| CPU | AMD Threadripper Pro 7965WX |
+| CPU Cores | 24 |
+| Memory | ~256 GB DDR5 |
+
+## GPUs
+
+| Component | Value |
+|----------|-------|
+| GPU Count | 2 |
+| GPU Model | NVIDIA RTX PRO 6000 Blackwell Workstation Edition |
+| VRAM | 96 GB each |
+| Tensor Parallel | 2 |
+| Interconnect | PCIe Gen5 (No NVLink) |
+| Power Limit | 450 W |
 
 GPU assignment:
 
--   GPU 0: RTX 5090 (excluded)
--   GPU 1: RTX PRO 6000
--   GPU 2: RTX PRO 6000
+```
+GPU0 : RTX 5090 (display GPU)
+GPU1 : RTX PRO 6000
+GPU2 : RTX PRO 6000
+```
 
-------------------------------------------------------------------------
+---
 
-# Patch Summary
+# Software Versions
 
-## MTP-2 Image
+| Component | Version |
+|----------|---------|
+| CUDA | 13 |
+| PyTorch | 2.11.0 |
+| vLLM | 0.25.0 |
+| FlashInfer | 0.6.14 |
+| KV Cache | FP8 |
 
-Image:
+---
 
-    vllm-ds4:v0.25.0-patched
+# Images
 
-Digest:
+## MTP-2
 
-    vllm-ds4@sha256:74fa0eec47faa81a8fca3d9d372494ffeb16a60942cb20088a04db1504bb17f0
+Image
 
-Included:
+```
+vllm-ds4:v0.25.0-patched
+```
 
--   PR #48303 - DeepSeek MXFP4 FlashInfer CUTLASS MoE support
--   PR #48304 - DeepSeek V4 MTP compression / RoPE fix
--   PR #48317 - hybrid KV-cache capacity reporting fix
--   flashinfer-python 0.6.14
--   NVRTC development headers
+Digest
 
-------------------------------------------------------------------------
+```
+sha256:74fa0eec47faa81a8fca3d9d372494ffeb16a60942cb20088a04db1504bb17f0
+```
 
-# MTP-2 Deployment
+---
 
-Model:
+## DSpark
 
-    deepseek-ai/DeepSeek-V4-Flash
+Image
 
-Served name:
+```
+vllm-ds4:v0.25.0-dspark-topk256
+```
 
-    d4f
+Digest
 
-Port:
+```
+sha256:e6176d085417967353c7e998ec2cc3b46b7edd87221e1aef44150a1076ecc9c1
+```
 
-    15004
+---
 
-Speculative decoding:
+# Included Upstream Pull Requests
 
-    method: mtp
-    num_speculative_tokens: 2
+Both images include:
 
-Important runtime flags:
+- PR #48303 — FlashInfer CUTLASS MXFP4 MoE backend
+- PR #48304 — DeepSeek-V4 MTP compression / RoPE fix
+- PR #48317 — Hybrid KV-cache reporting fix
 
-    --tensor-parallel-size 2
-    --kv-cache-dtype fp8
-    --gpu-memory-utilization 0.95
-    --max-model-len 1048576
-    --max-num-seqs 64
-    --max-num-batched-tokens 4096
-    --enable-prefix-caching
-    --enable-chunked-prefill
-    --moe-backend flashinfer_cutlass
-    --async-scheduling
+Additional packages:
 
-------------------------------------------------------------------------
+- FlashInfer 0.6.14
+- CUDA Tile 1.5
+- NVRTC development headers
 
-# DSpark Deployment
+---
 
-Image:
+# Additional DSpark Changes
 
-    vllm-ds4:v0.25.0-dspark-topk256
+The DSpark image required additional work beyond the upstream pull requests.
 
-Digest:
+Additional modifications include:
 
-    vllm-ds4@sha256:e6176d085417967353c7e998ec2cc3b46b7edd87221e1aef44150a1076ecc9c1
+- FlashInfer SM120 sparse MLA top-k=256 support
+- DSpark speculative decoding
+- DeepSeek-V4 compatibility fix required by DSpark
+- Reuse of compiled FlashInfer autotune cache
 
-Changes:
+These changes are specific to the DSpark image.
 
--   Added FlashInfer SM120 sparse MLA topk=256 support
--   Enabled DSpark speculative decoding
--   Reused existing compiled kernel cache
+---
 
-Final speculative configuration:
+# Patch Comparison
 
-    method: dspark
-    num_speculative_tokens: 5
-    draft_sample_method: greedy
+| Feature | MTP-2 | DSpark |
+|----------|------:|-------:|
+| FlashInfer CUTLASS MoE | ✓ | ✓ |
+| DeepSeek RoPE Fix | ✓ | ✓ |
+| Hybrid KV Reporting | ✓ | ✓ |
+| MTP Speculative Decoding | ✓ | — |
+| DSpark Speculative Decoding | — | ✓ |
+| Sparse MLA Top-k=256 | — | ✓ |
+| DeepSeek DSpark Compatibility Fix | — | ✓ |
 
-------------------------------------------------------------------------
+---
 
-# DSpark Stability Fix
+# Runtime Configuration
 
-Initial configuration:
+Model
 
-    --gpu-memory-utilization 0.95
+```
+deepseek-ai/DeepSeek-V4-Flash
+```
 
-Result:
+Served name
 
--   OOM during extended requests
+```
+d4f
+```
 
-Final configuration:
+Tensor parallel
 
-    --gpu-memory-utilization 0.93
+```
+2
+```
 
-Final benchmark power:
+Maximum sequence length
 
-    GPU 1: 450W
-    GPU 2: 450W
+```
+1,048,576
+```
 
-------------------------------------------------------------------------
+KV Cache
 
-# Benchmark Configuration
+```
+FP8
+```
 
-Tool:
+GPU memory utilization
 
-    llm-bench
+MTP-2
 
-Concurrency:
+```
+0.95
+```
 
-    1,2,4,8,16,32,64
+DSpark
 
-Context lengths:
+```
+0.93
+```
 
-    0
-    8192
-    16384
-    32768
-    65536
-    131072
-    262144
+---
 
-------------------------------------------------------------------------
+# Important Runtime Flags
 
-# MTP-2 Benchmark Results
+```
+--tensor-parallel-size 2
 
-## Throughput tok/s
+--kv-cache-dtype fp8
 
-  Context         1       2       4       8      16       32       64
-  --------- ------- ------- ------- ------- ------- -------- --------
-  0           189.9   297.0   349.4   670.0   994.3   1542.1   2362.2
-  8K          194.3   300.8   332.5   607.3   899.9   1303.1   1947.6
-  16K         167.0   304.4   328.8   583.5   884.9   1345.3   1891.3
-  32K         182.7   273.3   322.1   598.6   833.1   1256.4       \-
-  64K         184.1   263.5   321.4   569.7   805.8       \-       \-
-  128K        195.5   256.4   306.3   550.6      \-       \-       \-
-  256K        182.5   261.5   308.0      \-      \-       \-       \-
+--gpu-memory-utilization
 
-------------------------------------------------------------------------
+--max-model-len 1048576
 
-# MTP-2 Speculative Metrics
+--max-num-seqs 64
 
-Captured from:
+--max-num-batched-tokens 4096
 
-    mtp2-final-metrics.txt
+--enable-prefix-caching
 
-  Metric                        Value
-  ------------------------- ---------
-  Speculative rounds          422,517
-  Draft tokens                845,034
-  Accepted tokens             439,151
-  Generated tokens            862,227
-  Draft acceptance             51.97%
-  Accepted tokens / round       1.039
+--enable-chunked-prefill
 
-Prefix cache:
+--async-scheduling
 
-  Metric                  Value
-  ---------------- ------------
-  Prefix queries     20,848,155
-  Prefix hits        19,462,656
-  Hit rate               93.35%
+--reasoning-parser deepseek_v4
+```
 
-------------------------------------------------------------------------
+MTP additionally uses
 
-# DSpark Benchmark Results
+```
+method=mtp
 
-Final runs:
+num_speculative_tokens=2
+```
 
-    GPU 1: 450W
-    GPU 2: 450W
+DSpark additionally uses
 
-## DSpark Run 1
+```
+method=dspark
 
-Context 0:
+num_speculative_tokens=5
 
-    1:175.26
-    2:251.32
-    4:352.85
-    8:497.88
-    16:741.06
-    32:1113.40
-    64:1709.70
+draft_sample_method=greedy
+```
 
-Context 8192:
-
-    1:215.71
-    2:280.53
-    4:374.78
-    8:630.47
-    16:950.89
-    32:1212.54
-    64:1984.18
-
-## DSpark Run 2
-
-Context 0:
-
-    1:171.15
-    2:245.73
-    4:345.43
-    8:493.56
-    16:746.63
-    32:1127.43
-    64:1725.35
-
-Context 8192:
-
-    1:203.23
-    2:258.92
-    4:403.26
-    8:538.64
-    16:744.62
-    32:1219.54
-    64:1923.63
-
-------------------------------------------------------------------------
-
-# DSpark Speculative Metrics
-
-Small validation capture:
-
-  Metric                 Value
-  -------------------- -------
-  Speculative rounds         1
-  Draft tokens               5
-  Accepted tokens            1
-  Acceptance               20%
-  Accepted / round         1.0
-
-Note:
-
-This was not a full benchmark metric capture.
-
-------------------------------------------------------------------------
-
-# GPU Snapshot
-
-## DSpark Final Snapshot
-
-Captured at 450W:
-
-    GPU 1:
-    Power draw: 435.58W
-    Temperature: 61C
-    SM clock: 2737 MHz
-    Memory used: 96658 MiB
-    Utilization: 99%
-
-    GPU 2:
-    Power draw: 437.43W
-    Temperature: 66C
-    SM clock: 2700 MHz
-    Memory used: 96688 MiB
-    Utilization: 99%
-
-------------------------------------------------------------------------
+---
 
 # Runtime Notes
 
-MTP-2 startup:
+Confirmed during startup:
 
-    init engine (profile, create kv cache, warmup model) took 80.04 s
+- Asynchronous scheduling enabled
+- Prefix caching enabled
+- Chunked prefill enabled
+- FP8 KV cache
+- Breakable CUDA Graphs enabled
+- DeepGEMM FP4 experts
+- FlashInfer Sparse MLA backend
+- TileLang kernels compiled successfully
 
-Confirmed:
+---
 
-    Asynchronous scheduling is enabled.
+# Model Loading
 
-No observed:
+Checkpoint size
 
--   CUDA OOM on final MTP-2 run
--   NCCL failures
--   Runtime crashes
+```
+148.66 GiB
+```
 
-------------------------------------------------------------------------
+Model memory
 
-# Remaining Items
+```
+75.64 GiB per GPU
+```
 
-For a fully reproducible release:
+Weight loading
 
--   Exact llm-bench command line
--   MTP-2 GPU snapshot CSV contents
--   Full raw benchmark JSON files
--   Final MTP-2 vs DSpark comparison table
+```
+16.47 seconds
+```
+
+MTP draft model loading
+
+```
+1.24 seconds
+```
+
+Total engine initialization
+
+```
+133.36 seconds
+```
+
+---
+
+# CUDA Graphs
+
+Graph capture time
+
+```
+32 seconds
+```
+
+CUDA graph pool
+
+```
+1.73 GiB
+```
+
+Estimated graph memory
+
+```
+1.58 GiB
+```
+
+Available KV cache
+
+```
+10.29 GiB
+```
+
+GPU KV cache
+
+```
+1,993,100 tokens
+```
+
+Maximum full-context concurrency
+
+```
+1.90x
+```
+
+---
+
+# MTP-2 Benchmarks
+
+## Throughput (tokens/sec)
+
+| Context | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+|--------:|----:|----:|----:|----:|----:|----:|----:|
+| 0 | 189.9 | 297.0 | 349.4 | 670.0 | 994.3 | 1542.1 | 2362.2 |
+| 8K | 194.3 | 300.8 | 332.5 | 607.3 | 899.9 | 1303.1 | 1947.6 |
+| 16K | 167.0 | 304.4 | 328.8 | 583.5 | 884.9 | 1345.3 | 1891.3 |
+| 32K | 182.7 | 273.3 | 322.1 | 598.6 | 833.1 | 1256.4 | — |
+| 64K | 184.1 | 263.5 | 321.4 | 569.7 | 805.8 | — | — |
+| 128K | 195.5 | 256.4 | 306.3 | 550.6 | — | — | — |
+| 256K | 182.5 | 261.5 | 308.0 | — | — | — | — |
+
+---
+
+# MTP-2 Speculative Statistics
+
+Captured from full benchmark metrics.
+
+| Metric | Value |
+|---------|------:|
+| Speculative rounds | 422,517 |
+| Draft tokens | 845,034 |
+| Accepted tokens | 439,151 |
+| Generated tokens | 862,227 |
+| Acceptance rate | **51.97%** |
+| Accepted tokens / round | **1.039** |
+
+---
+
+# Prefix Cache
+
+| Metric | Value |
+|---------|------:|
+| Queries | 20,848,155 |
+| Hits | 19,462,656 |
+| Hit Rate | **93.35%** |
+
+---
+
+# DSpark Stability
+
+Initial GPU memory utilization
+
+```
+0.95
+```
+
+Result
+
+- Stable for startup
+- CUDA OOM during larger benchmark runs
+
+Final configuration
+
+```
+--gpu-memory-utilization 0.93
+```
+
+This resolved the OOM issue while maintaining nearly identical throughput.
+
+---
+
+# DSpark Benchmarks
+
+## Run 1
+
+### Context 0
+
+|Concurrency|tok/s|
+|---:|---:|
+|1|175.26|
+|2|251.32|
+|4|352.85|
+|8|497.88|
+|16|741.06|
+|32|1113.40|
+|64|1709.70|
+
+### Context 8192
+
+|Concurrency|tok/s|
+|---:|---:|
+|1|215.71|
+|2|280.53|
+|4|374.78|
+|8|630.47|
+|16|950.89|
+|32|1212.54|
+|64|1984.18|
+
+---
+
+## Run 2
+
+### Context 0
+
+|Concurrency|tok/s|
+|---:|---:|
+|1|171.15|
+|2|245.73|
+|4|345.43|
+|8|493.56|
+|16|746.63|
+|32|1127.43|
+|64|1725.35|
+
+### Context 8192
+
+|Concurrency|tok/s|
+|---:|---:|
+|1|203.23|
+|2|258.92|
+|4|403.26|
+|8|538.64|
+|16|744.62|
+|32|1219.54|
+|64|1923.63|
+
+---
+
+# DSpark Speculative Metrics
+
+A full production metrics capture was not available.
+
+Validation capture confirmed speculative decoding functionality.
+
+| Metric | Value |
+|---------|------:|
+| Speculative rounds | 1 |
+| Draft tokens | 5 |
+| Accepted tokens | 1 |
+| Acceptance | 20% |
+
+---
+
+# GPU Snapshot
+
+Power limit
+
+```
+450 W
+```
+
+GPU1
+
+- 435.58 W
+- 61°C
+- 2737 MHz
+- 96.7 GB VRAM
+- 99% utilization
+
+GPU2
+
+- 437.43 W
+- 66°C
+- 2700 MHz
+- 96.7 GB VRAM
+- 99% utilization
+
+---
+
+# Observations
+
+MTP-2
+
+- Stable throughout benchmarking
+- Approximately 52% draft acceptance
+- Excellent prefix cache utilization
+- Successfully operated at 95% GPU memory utilization
+
+DSpark
+
+- Required additional DeepSeek compatibility changes
+- Required reduced GPU memory utilization (93%)
+- Stable after tuning
+- Competitive throughput at higher concurrency
+
+---
+
+# Remaining Work
+
+Future updates may include:
+
+- Complete DSpark speculative statistics
+- Full benchmark JSON artifacts
+- Exact llm-bench command lines
+- Additional long-context benchmark runs
+- MTP-2 versus DSpark comparison plots
